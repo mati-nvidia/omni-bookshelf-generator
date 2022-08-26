@@ -14,10 +14,30 @@ class MyExtension(omni.ext.IExt):
         self._window = ui.Window("My Window", width=300, height=300)
         with self._window.frame:
             with ui.VStack():
-                ui.Label("Some Label")
+                
+                with ui.HStack():
+                    ui.Label("Width: ")
+                    self.width_model = ui.IntField().model
+                
+                with ui.HStack():
+                    ui.Label("Height: ")
+                    self.height_model = ui.IntField().model
+                
+                with ui.HStack():
+                    ui.Label("Thickness: ")
+                    self.thickness_model = ui.IntField().model
+
+                with ui.HStack():
+                    ui.Label("Number of Shelves: ")
+                    self.num_shelves_model = ui.IntField().model
 
                 def on_click():
-                    BookshelfGenerator()
+                    BookshelfGenerator(
+                        width=self.width_model.as_int,
+                        height=self.height_model.as_int,
+                        thickness=self.thickness_model.as_int,
+                        num_shelves=self.num_shelves_model.as_int,
+                    )
                 ui.Button("Click Me", clicked_fn=lambda: on_click())
 
     def on_shutdown(self):
