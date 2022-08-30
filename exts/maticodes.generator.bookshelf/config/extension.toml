@@ -3,30 +3,33 @@
 version = "1.0.0"
 
 # The title and description fields are primarily for displaying extension info in UI
-title = "Simple UI Extension Template"
-description="The simplest python extension example. Use it as a starting point for your extensions."
+title = "Bookshelf Generator"
+description="A procedural modeling tool for creating bookshelfs with arrayed books."
+author = "Matias Codesal"
 
 # Path (relative to the root) or content of readme markdown file for UI.
 readme  = "docs/README.md"
+changelog = "docs/CHANGELOG.md"
+
+# preview_image = ""
+# icon = ""
 
 # URL of the extension source repository.
-repository = ""
+repository = "https://github.com/mati-nvidia/omni-bookshelf-generator"
 
 # One of categories for UI.
-category = "Example"
+category = "Modeling"
 
 # Keywords for the extension
-keywords = ["kit", "example"]
+keywords = ["modeling", "procedural", "pointinstancer", "instancing", "book", "bookshelf"]
 
 
 # Use omni.ui to build simple UI
 [dependencies]
 "omni.kit.uiapp" = {}
+"omni.usd" = {}
 
 # Main python module this extension provides, it will be publicly available as "import maticodes.generator.bookshelf".
 [[python.module]]
 name = "maticodes.generator.bookshelf"
 
-#[app.font]
-#useJapaneseRegion = true
-#japaneseFontPath = "C:/Users/mcodesal/AppData/Local/ov/pkg/code-2022.1.2-rc.6/kit/resources/fonts/NotoSansTC-Regular.otf"

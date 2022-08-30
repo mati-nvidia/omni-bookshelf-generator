@@ -19,17 +19,19 @@ class BookshelfGenerator:
         self.height = height
         self.depth = depth
         self.thickness = thickness
-        omni.kit.commands.execute('DeletePrims', paths=["/World/Looks", "/World/Geometry"])
+        if self._stage.GetPrimAtPath("/World/Bookshelf").IsValid():
+            omni.kit.commands.execute('DeletePrims', paths=["/World/Bookshelf"])
 
-        self.geom_scope_path = Sdf.Path(omni.usd.get_stage_next_free_path(self._stage, "/World/Geometry", False))
-        self.looks_scope_path = Sdf.Path(omni.usd.get_stage_next_free_path(self._stage, "/World/Looks", False))
+        self.asset_root_path = Sdf.Path(omni.usd.get_stage_next_free_path(self._stage, "/World/Bookshelf", False))
+        self.geom_scope_path = Sdf.Path(omni.usd.get_stage_next_free_path(self._stage, self.asset_root_path.AppendPath("Geometry"), False))
+        self.looks_scope_path = Sdf.Path(omni.usd.get_stage_next_free_path(self._stage, self.asset_root_path.AppendPath("Looks"), False))
+        omni.kit.commands.execute('CreatePrim', prim_type='Xform', prim_path=str(self.asset_root_path))
         omni.kit.commands.execute('CreatePrim', prim_type='Scope', prim_path=str(self.geom_scope_path))
         omni.kit.commands.execute('CreatePrim', prim_type='Scope', prim_path=str(self.looks_scope_path))
         
         self.create_prototypes()
         self.create_frame()
         self.create_shelves(num_shelves)
-        #self.create_books()
 
     def create_prototypes(self):
         self.prototypes:Usd.Prim = self._stage.OverridePrim(self.geom_scope_path.AppendPath("Prototypes"))
@@ -57,6 +59,8 @@ class BookshelfGenerator:
             bbox_min = bbox_range.GetMin()
             bbox_max = bbox_range.GetMax()
             self.prototype_widths.append(bbox_max[0] - bbox_min[0])
+            asset_xform = UsdGeom.Xform(prim)
+            asset_xform.SetResetXformStack(True)
 
         
         self.prototypes.SetSpecifier(Sdf.SpecifierOver)
@@ -69,8 +73,9 @@ class BookshelfGenerator:
         )
         instancer = UsdGeom.PointInstancer.Define(self._stage, instancer_path)
         xform = UsdGeom.Xformable(instancer)
-        xform.AddTranslateOp().Set(Gf.Vec3d(-self.width/2, shelf_height, 0))
+        xform.AddTranslateOp().Set(Gf.Vec3d(-self.width/2, shelf_height + self.thickness/2, self.depth/3))
         positions = []
+        scales = []
         proto_ids = []
         next_x = 0
         def get_random_id():
@@ -79,13 +84,19 @@ class BookshelfGenerator:
         next_width = self.prototype_widths[next_id] 
         
         while next_x + next_width < self.width:
+            width_scalar = random.random() * 1 + 1 
+            height_scalar = random.random() * 0.5 + 1
             positions.append(Gf.Vec3f(next_x, 0, 0))
+            scales.append(Gf.Vec3d(width_scalar, height_scalar, 1))
             proto_ids.append(next_id)
-            next_x += self.prototype_widths[next_id] 
+            next_x += self.prototype_widths[next_id] * width_scalar
             next_id = get_random_id()
             next_width = self.prototype_widths[next_id] 
+            carb.log_info(f"Width Scalar: {width_scalar}")
+            carb.log_info(f"Next Width: {next_width}")
 
         instancer.CreatePositionsAttr().Set(positions)
+        instancer.CreateScalesAttr().Set(scales)
         instancer.CreateProtoIndicesAttr().Set(proto_ids)
         instancer.CreatePrototypesRel().SetTargets(self.prototype_paths)
 
