@@ -15,39 +15,34 @@ CUBE_POINTS_TEMPLATE = [(-1, -1, -1), (1, -1, -1), (-1, -1, 1), (1, -1, 1), (-1,
 class BookshelfGenerator:
     def __init__(self, ) -> None:
         self._stage:Usd.Stage = omni.usd.get_context().get_stage()
-        self.positions = []
-        self.scales = []
-        self.proto_ids = []
-        if self._stage.GetPrimAtPath("/World/Bookshelf").IsValid():
-            omni.kit.commands.execute('DeletePrims', paths=["/World/Bookshelf"])
+        # if self._stage.GetPrimAtPath("/World/Bookshelf").IsValid():
+        #     omni.kit.commands.execute('DeletePrims', paths=["/World/Bookshelf"])
 
-        self.asset_root_path = None
-        self.geom_scope_path = None
-        self.looks_scope_path = None
-
-    def create_shelf_material(self):
-        self.shelf_mtl_path = Sdf.Path(omni.usd.get_stage_next_free_path(self._stage, self.looks_scope_path.AppendPath("Cherry"), False))
+    def create_shelf_material(self, looks_scope_path):
+        shelf_mtl_path = Sdf.Path(omni.usd.get_stage_next_free_path(self._stage, looks_scope_path.AppendPath("Cherry"), False))
         result = omni.kit.commands.execute('CreateMdlMaterialPrimCommand',
             mtl_url='http://omniverse-content-production.s3-us-west-2.amazonaws.com/Materials/Base/Wood/Cherry.mdl',
             mtl_name='Cherry',
-            mtl_path=str(self.shelf_mtl_path))
+            mtl_path=str(shelf_mtl_path))
 
         omni.kit.commands.execute('SelectPrims',
             old_selected_paths=[],
-            new_selected_paths=[str(self.shelf_mtl_path)],
+            new_selected_paths=[str(shelf_mtl_path)],
             expand_in_stage=True)
+        
+        return shelf_mtl_path
 
     def create_new(self):
-        self.asset_root_path = Sdf.Path(omni.usd.get_stage_next_free_path(self._stage, "/World/Bookshelf", False))
-        self.geom_scope_path = Sdf.Path(omni.usd.get_stage_next_free_path(self._stage, self.asset_root_path.AppendPath("Geometry"), False))
-        self.looks_scope_path = Sdf.Path(omni.usd.get_stage_next_free_path(self._stage, self.asset_root_path.AppendPath("Looks"), False))
-        omni.kit.commands.execute('CreatePrim', prim_type='Xform', prim_path=str(self.asset_root_path))
-        omni.kit.commands.execute('CreatePrim', prim_type='Scope', prim_path=str(self.geom_scope_path))
-        omni.kit.commands.execute('CreatePrim', prim_type='Scope', prim_path=str(self.looks_scope_path))
-        self.create_shelf_material()
-        prototypes_container_path = self.geom_scope_path.AppendPath("Prototypes")
+        asset_root_path = Sdf.Path(omni.usd.get_stage_next_free_path(self._stage, "/World/Bookshelf", False))
+        geom_scope_path = Sdf.Path(omni.usd.get_stage_next_free_path(self._stage, asset_root_path.AppendPath("Geometry"), False))
+        looks_scope_path = Sdf.Path(omni.usd.get_stage_next_free_path(self._stage, asset_root_path.AppendPath("Looks"), False))
+        omni.kit.commands.execute('CreatePrim', prim_type='Xform', prim_path=str(asset_root_path))
+        omni.kit.commands.execute('CreatePrim', prim_type='Scope', prim_path=str(geom_scope_path))
+        omni.kit.commands.execute('CreatePrim', prim_type='Scope', prim_path=str(looks_scope_path))
+        self.create_shelf_material(looks_scope_path)
+        prototypes_container_path = geom_scope_path.AppendPath("Prototypes")
 
-        asset_root_prim:Usd.Prim = self._stage.GetPrimAtPath(self.asset_root_path)
+        asset_root_prim:Usd.Prim = self._stage.GetPrimAtPath(asset_root_path)
         asset_root_prim.CreateAttribute("bookshelf_gen:width", Sdf.ValueTypeNames.Float, custom=True).Set(150)
         asset_root_prim.CreateAttribute("bookshelf_gen:height", Sdf.ValueTypeNames.Float, custom=True).Set(200)
         asset_root_prim.CreateAttribute("bookshelf_gen:depth", Sdf.ValueTypeNames.Float, custom=True).Set(25)
@@ -55,8 +50,36 @@ class BookshelfGenerator:
         asset_root_prim.CreateAttribute("bookshelf_gen:numShelves", Sdf.ValueTypeNames.Float, custom=True).Set(3)
         asset_root_prim.CreateAttribute("bookshelf_gen:prototypesContainer", Sdf.ValueTypeNames.String, custom=True).Set(str(prototypes_container_path))
 
-    def create_prototypes(self):
-        self.prototypes:Usd.Prim = self._stage.OverridePrim(self.geom_scope_path.AppendPath("Prototypes"))
+    def create_prototypes(self, asset_root_path):
+        if isinstance(asset_root_path, str):
+            asset_root_path = Sdf.Path(asset_root_path)
+        asset_root_prim:Usd.Prim = self._stage.GetPrimAtPath(asset_root_path)
+        geom_scope_path = asset_root_path.AppendPath("Geometry")
+        prototypes:Usd.Prim = self._stage.OverridePrim(geom_scope_path.AppendPath("Prototypes"))
+        book_stage:Usd.Stage = Usd.Stage.Open(str(BOOK_A_USD))
+        default_prim = book_stage.GetDefaultPrim()
+        variants = default_prim.GetVariantSet("color").GetVariantNames()
+        for variant in variants:
+            book_path = omni.usd.get_stage_next_free_path(self._stage,
+                prototypes.GetPath().AppendPath("book_A"), 
+                False
+            )
+            omni.kit.commands.execute('CreateReference',
+                path_to=book_path,
+                asset_path=str(BOOK_A_USD),
+                usd_context=omni.usd.get_context()
+            )
+            prim = self._stage.GetPrimAtPath(book_path)
+            prim.GetVariantSet("color").SetVariantSelection(variant)
+            asset_xform = UsdGeom.Xform(prim)
+            asset_xform.SetResetXformStack(True)
+
+        
+        prototypes.SetSpecifier(Sdf.SpecifierOver)
+        return prototypes.GetPath()
+
+    def get_prototype_attrs(self, prototypes_container_path):
+        # TODO: loop through children and get their widths and paths
         self.prototype_widths = []
         self.prototype_paths = []
         bbox_cache = UsdGeom.BBoxCache(Usd.TimeCode.Default(), includedPurposes=[UsdGeom.Tokens.default_])
@@ -84,15 +107,12 @@ class BookshelfGenerator:
             asset_xform = UsdGeom.Xform(prim)
             asset_xform.SetResetXformStack(True)
 
-        
-        self.prototypes.SetSpecifier(Sdf.SpecifierOver)
-        return self.prototypes.GetPath()
-
     def generate(self, width=100, height=250, depth=20, thickness=2, num_shelves=3, proto_container_path=""):
         self.width = width
         self.height = height
         self.depth = depth
         self.thickness = thickness
+        widths, paths = self.get_prototype_attrs()
         self.create_frame()
         self.create_shelves(num_shelves)
 
