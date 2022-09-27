@@ -1,11 +1,12 @@
-import asyncio
 import random
 from pathlib import Path
 import typing
+import weakref
 
 import carb
 import omni.kit.app
 import omni.kit.commands
+from omni.kit.property.usd.prim_selection_payload import PrimSelectionPayload
 import omni.usd
 
 from pxr import Usd, UsdGeom, Gf, Sdf
@@ -24,10 +25,6 @@ class BookshelfGenerator:
             else:
                 self._asset_root_path = asset_root_path
                 self.from_usd()
-            # TODO: Get all parameters for attributes
-        
-        # if self._stage.GetPrimAtPath("/World/Bookshelf").IsValid():
-        #     omni.kit.commands.execute('DeletePrims', paths=["/World/Bookshelf"])
     
     def from_usd(self):
         prim = self._stage.GetPrimAtPath(self._asset_root_path)
@@ -73,12 +70,12 @@ class BookshelfGenerator:
         self.create_shelf_material(self.looks_scope_path)
         prototypes_container_path = self.geom_scope_path.AppendPath("Prototypes")
 
-        asset_root_prim:Usd.Prim = self._stage.GetPrimAtPath(self._asset_root_path)
-        asset_root_prim.CreateAttribute("bookshelf_gen:width", Sdf.ValueTypeNames.Float, custom=True).Set(150)
-        asset_root_prim.CreateAttribute("bookshelf_gen:height", Sdf.ValueTypeNames.Float, custom=True).Set(200)
-        asset_root_prim.CreateAttribute("bookshelf_gen:depth", Sdf.ValueTypeNames.Float, custom=True).Set(25)
-        asset_root_prim.CreateAttribute("bookshelf_gen:thickness", Sdf.ValueTypeNames.Float, custom=True).Set(2)
-        asset_root_prim.CreateAttribute("bookshelf_gen:numShelves", Sdf.ValueTypeNames.Float, custom=True).Set(3)
+        self.width = 150
+        self.height = 200
+        self.depth = 25
+        self.thickness = 2
+        self.num_shelves = 3
+        self.set_bookshelf_attrs()
 
         instancer_path = Sdf.Path(omni.usd.get_stage_next_free_path(
             self._stage, 
@@ -86,12 +83,31 @@ class BookshelfGenerator:
             False)
         )
         self.instancer = UsdGeom.PointInstancer.Define(self._stage, instancer_path)
-        xform = UsdGeom.Xformable(self.instancer)
-        xform.AddTranslateOp()
-        self.instancer.CreatePositionsAttr()
-        self.instancer.CreateScalesAttr()
-        self.instancer.CreateProtoIndicesAttr()
 
+        omni.kit.commands.execute('AddXformOp',
+            payload=PrimSelectionPayload(weakref.ref(self._stage), [instancer_path]),
+            precision=UsdGeom.XformOp.PrecisionDouble,
+            rotation_order='XYZ',
+            add_translate_op=True,
+            add_rotateXYZ_op=True,
+            add_orient_op=False,
+            add_scale_op=True,
+            add_transform_op=False,
+            add_pivot_op=False)
+
+        #xform = UsdGeom.Xformable(self.instancer)
+        #xform.AddTranslateOp()
+        self.instancer.CreatePositionsAttr().Set([])
+        self.instancer.CreateScalesAttr().Set([])
+        self.instancer.CreateProtoIndicesAttr().Set([])
+
+    def set_bookshelf_attrs(self):
+        asset_root_prim:Usd.Prim = self._stage.GetPrimAtPath(self._asset_root_path)
+        asset_root_prim.CreateAttribute("bookshelf_gen:width", Sdf.ValueTypeNames.Float, custom=True).Set(self.width)
+        asset_root_prim.CreateAttribute("bookshelf_gen:height", Sdf.ValueTypeNames.Float, custom=True).Set(self.height)
+        asset_root_prim.CreateAttribute("bookshelf_gen:depth", Sdf.ValueTypeNames.Float, custom=True).Set(self.depth)
+        asset_root_prim.CreateAttribute("bookshelf_gen:thickness", Sdf.ValueTypeNames.Float, custom=True).Set(self.thickness)
+        asset_root_prim.CreateAttribute("bookshelf_gen:numShelves", Sdf.ValueTypeNames.Float, custom=True).Set(self.num_shelves)
 
     def create_default_prototypes(self):
         asset_root_prim:Usd.Prim = self._stage.GetPrimAtPath(self._asset_root_path)
@@ -122,11 +138,12 @@ class BookshelfGenerator:
         self.instancer.CreatePrototypesRel().SetTargets(paths)
 
     def get_prototype_attrs(self):
-        # TODO: loop through children and get their widths and paths
         self.prototype_widths = []
         self.prototype_paths = []
         bbox_cache = UsdGeom.BBoxCache(Usd.TimeCode.Default(), includedPurposes=[UsdGeom.Tokens.default_])
         self.prototype_paths = self.instancer.GetPrototypesRel().GetForwardedTargets()
+        if len(self.prototype_paths) < 1:
+            raise ValueError("You must provide at least one prototype.")
 
         proto_container = self.prototype_paths[0].GetParentPath()
         container_prim = self._stage.GetPrimAtPath(proto_container)
@@ -140,20 +157,34 @@ class BookshelfGenerator:
             bbox_max = bbox_range.GetMax()
             self.prototype_widths.append(bbox_max[0] - bbox_min[0])
 
-        # TODO: Uncomment
-        #container_prim.SetSpecifier(Sdf.SpecifierOver)
+        container_prim.SetSpecifier(Sdf.SpecifierOver)
 
     def generate(self, width=100, height=250, depth=20, thickness=2, num_shelves=3, proto_container_path=""):
         self.width = width
         self.height = height
         self.depth = depth
         self.thickness = thickness
+        self.num_shelves = num_shelves
+        self.set_bookshelf_attrs()
         self.positions = []
         self.scales = []
         self.proto_ids = []
         self.get_prototype_attrs()
+        self.clear_boards()
         self.create_frame()
-        self.create_shelves(num_shelves)
+        self.create_shelves(self.num_shelves)
+
+    def clear_boards(self):
+        geom_scope_prim: Usd.Prim = self._stage.GetPrimAtPath(self.geom_scope_path)
+        boards = []
+        for child in geom_scope_prim.GetChildren():
+            if child.GetName().startswith("Board"):
+                boards.append(child.GetPath())
+
+        omni.kit.commands.execute('DeletePrims',
+            paths=boards,
+            destructive=False
+        )
 
     def create_books(self, shelf_height):
         next_x = 0
@@ -210,10 +241,10 @@ class BookshelfGenerator:
 
     
     def create_board(self, width):
-        cube_prim_path = omni.usd.get_stage_next_free_path(self._stage, self.geom_scope_path.AppendPath("Cube"), False)
-        omni.kit.commands.execute('CreateMeshPrimWithDefaultXform', prim_type='Cube')
+        cube_prim_path = omni.usd.get_stage_next_free_path(self._stage, self.geom_scope_path.AppendPath("Board"), False)
+        success, result = omni.kit.commands.execute('CreateMeshPrimWithDefaultXform', prim_type='Cube')
         omni.kit.commands.execute('MovePrim',
-            path_from='/World/Cube',
+            path_from=result,
             path_to=cube_prim_path)
         result = omni.kit.commands.execute('BindMaterialCommand',
             prim_path=cube_prim_path,
