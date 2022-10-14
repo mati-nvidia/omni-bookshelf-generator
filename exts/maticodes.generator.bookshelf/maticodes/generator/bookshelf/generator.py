@@ -1,15 +1,18 @@
+# SPDX-License-Identifier: Apache-2.0
+
 import random
-from pathlib import Path
 import typing
 import weakref
+from pathlib import Path
 
 import carb
 import omni.kit.app
 import omni.kit.commands
-from omni.kit.property.usd.prim_selection_payload import PrimSelectionPayload
 import omni.usd
+from omni.kit.property.usd.prim_selection_payload import PrimSelectionPayload
+from pxr import Gf, Sdf, Usd, UsdGeom
 
-from pxr import Usd, UsdGeom, Gf, Sdf
+from .utils import stage_up_adjust
 
 BOOK_A_USD = Path(__file__).parent.parent.parent.parent / "data" / "book_A.usd"
 CUBE_POINTS_TEMPLATE = [(-1, -1, -1), (1, -1, -1), (-1, -1, 1), (1, -1, 1), (-1, 1, -1), (1, 1, -1), (1, 1, 1), (-1, 1, 1)]
@@ -25,7 +28,14 @@ class BookshelfGenerator:
             else:
                 self._asset_root_path = asset_root_path
                 self.from_usd()
+        self._stage_subscription = omni.usd.get_context().get_stage_event_stream().create_subscription_to_pop(
+                self._on_usd_context_event, name="Bookshelf Generator USD Stage Open Listening"
+            )
     
+    def _on_usd_context_event(self, event: carb.events.IEvent):
+        if event.type == int(omni.usd.StageEventType.OPENED):
+            self._stage = omni.usd.get_context().get_stage()
+
     def from_usd(self):
         prim = self._stage.GetPrimAtPath(self._asset_root_path)
         self.width = prim.GetAttribute("bookshelf_gen:width").Get()
@@ -75,6 +85,7 @@ class BookshelfGenerator:
         self.depth = 25
         self.thickness = 2
         self.num_shelves = 3
+        self.randomize_scale = True
         self.set_bookshelf_attrs()
 
         instancer_path = Sdf.Path(omni.usd.get_stage_next_free_path(
@@ -95,8 +106,6 @@ class BookshelfGenerator:
             add_transform_op=False,
             add_pivot_op=False)
 
-        #xform = UsdGeom.Xformable(self.instancer)
-        #xform.AddTranslateOp()
         self.instancer.CreatePositionsAttr().Set([])
         self.instancer.CreateScalesAttr().Set([])
         self.instancer.CreateProtoIndicesAttr().Set([])
@@ -130,6 +139,11 @@ class BookshelfGenerator:
             prim = self._stage.GetPrimAtPath(book_path)
             prim.GetVariantSet("color").SetVariantSelection(variant)
             asset_xform = UsdGeom.Xform(prim)
+            if UsdGeom.GetStageUpAxis(self._stage) == UsdGeom.Tokens.z:
+                rotate_attr = prim.GetAttribute("xformOp:rotateXYZ")
+                rotation = rotate_attr.Get()
+                rotation[2] = 0
+                rotate_attr.Set(rotation)
             asset_xform.SetResetXformStack(True)
             paths.append(book_path)
 
@@ -159,12 +173,13 @@ class BookshelfGenerator:
 
         container_prim.SetSpecifier(Sdf.SpecifierOver)
 
-    def generate(self, width=100, height=250, depth=20, thickness=2, num_shelves=3, proto_container_path=""):
+    def generate(self, width=100, height=250, depth=20, thickness=2, num_shelves=3, randomize_scale=True):
         self.width = width
         self.height = height
         self.depth = depth
         self.thickness = thickness
         self.num_shelves = num_shelves
+        self.randomize_scale = randomize_scale
         self.set_bookshelf_attrs()
         self.positions = []
         self.scales = []
@@ -173,11 +188,12 @@ class BookshelfGenerator:
         self.clear_boards()
         self.create_frame()
         self.create_shelves(self.num_shelves)
+        omni.usd.get_context().get_selection().clear_selected_prim_paths()
 
     def clear_boards(self):
         geom_scope_prim: Usd.Prim = self._stage.GetPrimAtPath(self.geom_scope_path)
         boards = []
-        for child in geom_scope_prim.GetChildren():
+        for child in geom_scope_prim.GetAllChildren():
             if child.GetName().startswith("Board"):
                 boards.append(child.GetPath())
 
@@ -187,21 +203,34 @@ class BookshelfGenerator:
         )
 
     def create_books(self, shelf_height):
-        next_x = 0
+        x = 0
         def get_random_id():
             return random.randint(0, len(self.prototype_paths)-1)
-        next_id = get_random_id()
-        next_width = self.prototype_widths[next_id] 
+        id = get_random_id()
         
-        while next_x + next_width < self.width:
-            width_scalar = random.random() * 1 + 1 
-            height_scalar = random.random() * 0.5 + 1
-            self.positions.append(Gf.Vec3f(next_x, shelf_height, 0))
-            self.scales.append(Gf.Vec3d(width_scalar, height_scalar, 1))
-            self.proto_ids.append(next_id)
-            next_x += self.prototype_widths[next_id] * width_scalar
-            next_id = get_random_id()
-            next_width = self.prototype_widths[next_id] 
+        while True:
+            if self.randomize_scale:
+                width_scalar = random.random() * 1 + 1 
+                height_scalar = random.random() * 0.5 + 1
+            else:
+                width_scalar = 1
+                height_scalar = 1
+            if x + self.prototype_widths[id] * width_scalar > self.width:
+                break
+            pos = stage_up_adjust(self._stage, 
+                [x + self.prototype_widths[id] * width_scalar / 2, shelf_height, 0], 
+                Gf.Vec3f
+            )
+            self.positions.append(pos)
+            scale = stage_up_adjust(self._stage, 
+                [width_scalar, height_scalar, 1], 
+                Gf.Vec3d
+            )
+            self.scales.append(scale)
+            self.proto_ids.append(id)
+            # Update for next loop for next loop
+            x += self.prototype_widths[id] * width_scalar
+            id = get_random_id()
 
         self.instancer.GetPositionsAttr().Set(self.positions)
         self.instancer.GetScalesAttr().Set(self.scales)
@@ -210,7 +239,7 @@ class BookshelfGenerator:
 
     def create_shelves(self, num_shelves):
         translate_attr = self.instancer.GetPrim().GetAttribute("xformOp:translate")
-        translate_attr.Set(Gf.Vec3d(-self.width/2, self.thickness/2, self.depth/3))
+        translate_attr.Set(stage_up_adjust(self._stage, [-self.width/2, self.thickness/2, 0], Gf.Vec3d))
 
         # Put books on the bottom of the frame
         self.create_books(self.thickness/2)
@@ -220,24 +249,31 @@ class BookshelfGenerator:
             for num in range(1, num_shelves + 1):
                 board = self.create_board(self.width)
                 shelf_y_pos = num * offset + self.thickness/2
-                board.GetAttribute("xformOp:translate").Set(Gf.Vec3d(0, shelf_y_pos, 0))
+                translate = stage_up_adjust(self._stage, [0, shelf_y_pos, 0], Gf.Vec3d)
+                board.GetAttribute("xformOp:translate").Set(translate)
                 self.create_books(shelf_y_pos)
 
     def create_frame(self):
         # bottom
         board = self.create_board(self.width)
-        board.GetAttribute("xformOp:translate").Set(Gf.Vec3d(0, self.thickness/2, 0))
+        translate = stage_up_adjust(self._stage, [0, self.thickness/2, 0], Gf.Vec3d)
+        board.GetAttribute("xformOp:translate").Set(translate)
         # top
         board = self.create_board(self.width)
-        board.GetAttribute("xformOp:translate").Set(Gf.Vec3d(0, self.height - self.thickness/2, 0))
+        translate = stage_up_adjust(self._stage, [0, self.height - self.thickness/2, 0], Gf.Vec3d)
+        board.GetAttribute("xformOp:translate").Set(translate)
         # left
         board = self.create_board(self.height)
-        board.GetAttribute("xformOp:translate").Set(Gf.Vec3d(-self.width/2 - self.thickness/2, self.height/2, 0))
-        board.GetAttribute("xformOp:rotateXYZ").Set(Gf.Vec3d(0, 0, 90))
+        translate = stage_up_adjust(self._stage, [-self.width/2 - self.thickness/2, self.height/2, 0], Gf.Vec3d)
+        board.GetAttribute("xformOp:translate").Set(translate)
+        rotate = stage_up_adjust(self._stage, [0, 0, 90], Gf.Vec3d)
+        board.GetAttribute("xformOp:rotateXYZ").Set(rotate)
         # right
         board = self.create_board(self.height)
-        board.GetAttribute("xformOp:translate").Set(Gf.Vec3d(self.width/2 + self.thickness/2, self.height/2, 0))
-        board.GetAttribute("xformOp:rotateXYZ").Set(Gf.Vec3d(0, 0, 90))
+        translate = stage_up_adjust(self._stage, [self.width/2 + self.thickness/2, self.height/2, 0], Gf.Vec3d)
+        board.GetAttribute("xformOp:translate").Set(translate)
+        rotate = stage_up_adjust(self._stage, [0, 0, 90], Gf.Vec3d)
+        board.GetAttribute("xformOp:rotateXYZ").Set(rotate)
 
     
     def create_board(self, width):
@@ -267,7 +303,8 @@ class BookshelfGenerator:
             x = width / 2 * point[0]
             y = self.thickness / 2 * point[1]
             z = self.depth / 2 * point[2]
-            scaled_points.append((x, y, z))
+            scale = stage_up_adjust(self._stage, [x, y, z], Gf.Vec3d)
+            scaled_points.append(scale)
         points_attr.Set(scaled_points)
 
         return cube_prim

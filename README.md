@@ -1,6 +1,11 @@
 # Bookshelf Generator
 
-This extension can procedurally creates bookshelves with variable height and width and it fills the shelves with books. It is part of a series of live coding sessions that I am working on. It is currently incomplete, but you can follow along and I continue to develop it.
+This NVIDIA Omniverse Kit Extension procedurally creates bookshelves with variable height and width and it fills the shelves with books. It is part of a series of live coding sessions that I worked on. This is a great project to study if you are interested in learning more about USD, PointInstancers and Kit Extensions. Watch the recordings of the [full Bookshelf Generator live coding series](https://www.youtube.com/playlist?list=PL3jK4xNnlCVcDS_DgtTSAljdC2KUliU1F).
+
+![Bookshelf Generator](exts/maticodes.generator.bookshelf/data/clip.gif)
+
+## Usage 
+See the extension's README for [usage instructions](exts/maticodes.generator.bookshelf/docs/README.md).
 
 ## App Link Setup
 
@@ -26,14 +31,8 @@ You can also just pass a path to create link to:
 > link_app.bat --path "C:/Users/bob/AppData/Local/ov/pkg/create-2021.3.4"
 ```
 
+## Attribution
+Icon made by [Freepik](https://www.flaticon.com/authors/freepik) from [www.flaticon.com](www.flaticon.com)
 
-## Sharing Your Extensions
-
-This folder is ready to be pushed to any git repository. Once pushed direct link to a git repository can be added to *Omniverse Kit* extension search paths.
-
-Link might look like this: `git://github.com/mati-nvidia/omni-bookshelf-generator.git?branch=main&dir=exts`
-
-Notice `exts` is repo subfolder with extensions. More information can be found in "Git URL as Extension Search Paths" section of developers manual.
-
-To add a link to your *Omniverse Kit* based app go into: Extension Manager -> Gear Icon -> Extension Search Path
-
+## Contributing
+The source code for this repository is provided as-is and we are not accepting outside contributions.

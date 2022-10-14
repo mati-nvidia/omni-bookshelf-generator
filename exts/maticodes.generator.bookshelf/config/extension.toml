@@ -4,7 +4,7 @@ version = "1.0.0"
 
 # The title and description fields are primarily for displaying extension info in UI
 title = "Bookshelf Generator"
-description="A procedural modeling tool for creating bookshelfs with arrayed books."
+description="A procedural modeling tool for creating bookshelves with arrayed books."
 author = "Matias Codesal"
 
 # Path (relative to the root) or content of readme markdown file for UI.
@@ -12,7 +12,10 @@ readme  = "docs/README.md"
 changelog = "docs/CHANGELOG.md"
 
 # preview_image = ""
-# icon = ""
+icon = "data/icon.png"
+
+# Preview to show in the extension manager
+preview_image = "data/preview.png"
 
 # URL of the extension source repository.
 repository = "https://github.com/mati-nvidia/omni-bookshelf-generator"
@@ -21,7 +24,7 @@ repository = "https://github.com/mati-nvidia/omni-bookshelf-generator"
 category = "Modeling"
 
 # Keywords for the extension
-keywords = ["modeling", "procedural", "pointinstancer", "instancing", "book", "bookshelf"]
+keywords = ["modeling", "procedural", "pointinstancer", "instancing", "book", "bookshelf", "bookcase"]
 
 
 # Use omni.ui to build simple UI
