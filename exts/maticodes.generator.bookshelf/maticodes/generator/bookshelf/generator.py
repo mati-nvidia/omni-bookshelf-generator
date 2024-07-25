@@ -144,7 +144,7 @@ class BookshelfGenerator:
                 rotation = rotate_attr.Get()
                 rotation[2] = 0
                 rotate_attr.Set(rotation)
-            asset_xform.SetResetXformStack(True)
+            # asset_xform.SetResetXformStack(True)
             paths.append(book_path)
 
         
@@ -189,6 +189,7 @@ class BookshelfGenerator:
         self.create_frame()
         self.create_shelves(self.num_shelves)
         omni.usd.get_context().get_selection().clear_selected_prim_paths()
+        self.clearInstanceableOnBookInstancer()
 
     def clear_boards(self):
         geom_scope_prim: Usd.Prim = self._stage.GetPrimAtPath(self.geom_scope_path)
@@ -309,12 +310,7 @@ class BookshelfGenerator:
 
         return cube_prim
 
-
-
-
-        
-
-
-
-        
+    def clearInstanceableOnBookInstancer(self):
+        instancer_path = self.geom_scope_path.AppendPath("BooksInstancer")
+        omni.kit.commands.execute('ToggleInstanceableCommand', prim_path=[Sdf.Path(instancer_path)])
 
